@@ -1,21 +1,27 @@
 {
-    "name": "php-win-ext/rar",
-    "type": "php-ext",
-    "license": [
-        "PHP-3.01"
-    ],
-    "authors": [
-        {
-            "name": "Gustavo Lopes",
-            "email": "cataphract@php.net"
-        },
-        {
-            "name": "Antony Dovgal",
-            "email": "tony@daylessday.org"
-        }
-    ],
-    "require": {
-        "php": ">= 8.0.0"
+  "name": "php-win-ext/rar",
+  "type": "php-ext",
+  "description": "PHP extension for reading RAR archives using bundled unRAR library",
+  "license": "PHP-3.01",
+  "authors": [
+    {
+      "name": "Gustavo Lopes",
+      "email": "cataphract@php.net",
+      "role": "lead"
     },
-    "description": "rar extension"
+    {
+      "name": "Antony Dovgal",
+      "email": "tony@daylessday.org",
+      "role": "developer"
+    }
+  ],
+  "require": {
+    "php": ">= 8.0.0"
+  },
+  "replace": {
+    "ext-rar": "*"
+  },
+  "support": {
+    "source": "https://github.com/php-win-ext/php-rar"
+  }
 }

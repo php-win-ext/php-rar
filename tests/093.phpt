@@ -1,7 +1,5 @@
 --TEST--
 Traversal of RarArchive with foreach by reference gives error
---SKIPIF--
-<?php if(!extension_loaded("rar")) print "skip"; ?>
 --FILE--
 <?php
 if (PHP_VERSION_ID>=80500){
@@ -18,4 +16,4 @@ foreach ($a as &$v) {
 echo "\n";
 echo "Done.\n";
 --EXPECTF--
-Fatal error: main(): An iterator cannot be used with foreach by reference in %s on line %d
+Fatal error: main(): An iterator cannot be used with foreach by reference in %s on line %d%A

@@ -77,6 +77,7 @@ extern zend_module_entry rar_module_entry;
 #include "unrar/dll.hpp"
 #include "unrar/version.hpp"
 /* These are in unrar/headers.hpp, but that header depends on several other */
+/* clang-format off */
 enum HOST_SYSTEM {
   HOST_MSDOS=0,HOST_OS2=1,HOST_WIN32=2,HOST_UNIX=3,HOST_MACOS=4,
   HOST_BEOS=5,HOST_MAX
@@ -85,10 +86,12 @@ enum FILE_SYSTEM_REDIRECT {
   FSREDIR_NONE=0, FSREDIR_UNIXSYMLINK, FSREDIR_WINSYMLINK, FSREDIR_JUNCTION,
   FSREDIR_HARDLINK, FSREDIR_FILECOPY
 };
+/* clang-format on */
 
 /* maximum comment size if 64KB */
 #define RAR_MAX_COMMENT_SIZE 65536
 
+/* clang-format off */
 typedef struct _rar_cb_user_data {
 	char					*password;	/* can be NULL */
 	zval					*callable;  /* can be NULL */
@@ -105,13 +108,19 @@ typedef struct rar {
 	rar_cb_user_data			cb_userdata;
 	int							allow_broken;
 } rar_file_t;
+/* clang-format on */
 
 /* Misc */
-#if defined(ZTS) && PHP_MAJOR_VERSION < 7
-# define RAR_TSRMLS_TC	, void ***
-#else
+# if defined(__GNUC__) || defined(__clang__)
+#  define ARR_SIZE(arr) \
+		 (sizeof(arr) / sizeof((arr)[0]) + \
+		  0 * sizeof(char[1 - 2 * __builtin_types_compatible_p( \
+									  __typeof__(arr), __typeof__(&(arr)[0]))]))
+# else
+#  define ARR_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+# endif
+
 # define RAR_TSRMLS_TC
-#endif
 
 #define RAR_RETNULL_ON_ARGS() \
 	if (zend_parse_parameters_none() == FAILURE) { \
@@ -158,33 +167,6 @@ ZEND_EXTERN_MODULE_GLOBALS(rar);
 # define RAR_G(v) (rar_globals.v)
 #endif
 
-/* PHP 5.2 compatibility */
-#if PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION < 3
-#define zend_parse_parameters_none() \
-	zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "")
-#define Z_DELREF_P ZVAL_DELREF
-# define STREAM_ASSUME_REALPATH 0
-# define ALLOC_PERMANENT_ZVAL(z) \
-        (z) = (zval*) malloc(sizeof(zval));
-# define OPENBASEDIR_CHECKPATH(filename) \
-	(PG(safe_mode) && \
-	(!php_checkuid(filename, NULL, CHECKUID_CHECK_FILE_AND_DIR))) \
-	|| php_check_open_basedir(filename TSRMLS_CC)
-# undef ZEND_BEGIN_ARG_INFO_EX
-# define ZEND_BEGIN_ARG_INFO_EX(name, pass_rest_by_reference, return_reference, required_num_args) \
-	static const zend_arg_info name[] = { \
-		{ NULL, 0, NULL, 0, 0, 0, pass_rest_by_reference, return_reference, required_num_args },
-#endif
-
-/* Other compatibility quirks */
-/* PHP 5.3 doesn't have ZVAL_COPY_VALUE */
-#if !defined(ZEND_COPY_VALUE) && PHP_MAJOR_VERSION == 5
-#define ZVAL_COPY_VALUE(z, v)					\
-	do {										\
-		(z)->value = (v)->value;				\
-		Z_TYPE_P(z) = Z_TYPE_P(v);				\
-	} while (0)
-#endif
 
 #if !defined(HAVE_STRNLEN) || !HAVE_STRNLEN
 size_t _rar_strnlen(const char *s, size_t maxlen);
@@ -248,7 +230,7 @@ typedef struct _rar_find_output {
 	int							found;
 	size_t						position;
 	struct RARHeaderDataEx *	header;
-	unsigned long				packed_size;
+	zend_ulong					packed_size;
 	int							eof;
 } rar_find_output;
 #define RAR_SEARCH_INDEX		0x01U
@@ -297,7 +279,7 @@ extern zend_class_entry *rar_class_entry_ptr;
 void minit_rarentry(TSRMLS_D);
 void _rar_entry_to_zval(zval *parent,
 						struct RARHeaderDataEx *entry,
-						unsigned long packed_size,
+						zend_ulong packed_size,
 						size_t index,
 						zval *entry_object TSRMLS_DC);
 

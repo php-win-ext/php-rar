@@ -25,21 +25,16 @@
 */
 
 #ifdef HAVE_CONFIG_H
-#   include "config.h"
-#endif
-
-#ifdef __cplusplus
-extern "C" {
+# include "config.h"
 #endif
 
 #include <php.h>
 #include <wchar.h>
 #include "php_rar.h"
 
-#if HAVE_RAR
-
 /* {{{ Structure definitions */
 
+/* clang-format off */
 typedef struct _rar_find_state {
 	rar_find_output			out;
 	rar_file_t				*rar;
@@ -49,7 +44,7 @@ typedef struct _rar_find_state {
 struct _rar_unique_entry {
 	size_t					id;				/* position in the entries_array */
 	struct RARHeaderDataEx	entry;			/* last entry */
-	unsigned long			packed_size;
+	zend_ulong				packed_size;
 	int						depth;			/* number of directory separators */
 	size_t					name_wlen;		/* excluding L'\0' terminator */
 };
@@ -65,6 +60,7 @@ struct _rar_entries {
 	struct _rar_unique_entry	*last_accessed;
 	int							list_result; /* tell whether the archive's broken */
 };
+/* clang-format on */
 /* }}} */
 
 
@@ -73,9 +69,7 @@ static void _rar_nav_get_depth_and_length(wchar_t *filenamew, const size_t file_
 										  int *depth_out, size_t *wlen_out TSRMLS_DC);
 static int _rar_nav_get_depth(const wchar_t *filenamew, const size_t file_size);
 static int _rar_nav_compare_entries(const void *op1, const void *op2 TSRMLS_DC);
-#if PHP_MAJOR_VERSION >= 7
 static void _rar_nav_swap_entries(void *op1, void *op2);
-#endif
 static int _rar_nav_compare_entries_std(const void *op1, const void *op2);
 static inline int _rar_nav_compare_values(const wchar_t *str1, const int depth1,
 								   const wchar_t *str2, const int depth2,
@@ -116,15 +110,9 @@ void _rar_entry_search_start(rar_file_t *rar,
 			sizeof rar->entries->entries_array_s[0]);
 		memcpy(rar->entries->entries_array_s, rar->entries->entries_array,
 			rar->entries->num_entries * sizeof rar->entries->entries_array[0]);
-#if PHP_MAJOR_VERSION < 7
-		zend_qsort(rar->entries->entries_array_s, rar->entries->num_entries,
-			sizeof *rar->entries->entries_array_s, _rar_nav_compare_entries
-			TSRMLS_CC);
-#else
 		zend_qsort(rar->entries->entries_array_s, rar->entries->num_entries,
 			sizeof *rar->entries->entries_array_s, _rar_nav_compare_entries,
 			_rar_nav_swap_entries);
-#endif
 	}
 }
 /* }}} */
@@ -336,7 +324,7 @@ int _rar_list_files(rar_file_t *rar TSRMLS_DC) /* {{{ */
 	int result = 0;
 	size_t capacity = 0;
 	int first_file_check = TRUE;
-	unsigned long packed_size = 0UL;
+	zend_ulong packed_size = 0;
 	struct _rar_entries *ents;
 
 	if (rar->entries != NULL) {
@@ -378,22 +366,16 @@ int _rar_list_files(rar_file_t *rar TSRMLS_DC) /* {{{ */
 
 		/* reset packed size if not split before */
 		if ((entry.Flags & RHDF_SPLITBEFORE) == 0)
-			packed_size = 0UL;
+			packed_size = 0;
 
-		/* we would exceed size of ulong. cap at ulong_max
-		 * equivalent to packed_size + entry.PackSize > ULONG_MAX,
-		 * but without overflowing */
-		if (ULONG_MAX - packed_size < entry.PackSize)
-			packed_size = ULONG_MAX;
-		else {
-			packed_size += entry.PackSize;
-			if (entry.PackSizeHigh != 0) {
-#if ULONG_MAX > 0xffffffffUL
-				packed_size += ((unsigned long) entry.PackSizeHigh) << 32;
-#else
-				packed_size = ULONG_MAX; /* cap */
-#endif
-			}
+		/* accumulate packed size; cap at ZEND_LONG_MAX (the PHP int ceiling) */
+		{
+			zend_ulong entry_packed = ((zend_ulong)entry.PackSizeHigh << 32) | entry.PackSize;
+			if (entry_packed > (zend_ulong)ZEND_LONG_MAX ||
+					packed_size > (zend_ulong)ZEND_LONG_MAX - entry_packed)
+				packed_size = (zend_ulong)ZEND_LONG_MAX;
+			else
+				packed_size += entry_packed;
 		}
 
 		if (entry.Flags & RHDF_SPLITAFTER) /* do not commit */
@@ -502,7 +484,6 @@ static int _rar_nav_compare_entries(const void *op1, const void *op2 TSRMLS_DC) 
 }
 /* }}} */
 
-#if PHP_MAJOR_VERSION >= 7
 static void _rar_nav_swap_entries(void *op1, void *op2) /* {{{ */
 {
 	/* just swaps two pointer values */
@@ -515,7 +496,6 @@ static void _rar_nav_swap_entries(void *op1, void *op2) /* {{{ */
 
 }
 /* }}} */
-#endif
 
 static int _rar_nav_compare_entries_std(const void *op1, const void *op2) /* {{{ */
 {
@@ -620,12 +600,6 @@ static size_t _rar_nav_position_on_dir_start(const wchar_t *dir_name,
 
 /* end functions with internal linkage */
 
-#endif /* HAVE_RAR */
-
-#ifdef __cplusplus
-}
-#endif
-
 /*
  * Local variables:
  * tab-width: 4
@@ -634,5 +608,3 @@ static size_t _rar_nav_position_on_dir_start(const wchar_t *dir_name,
  * vim600: noet sw=4 ts=4 fdm=marker
  * vim<600: noet sw=4 ts=4
  */
-
-

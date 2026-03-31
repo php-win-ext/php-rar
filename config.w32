@@ -18,7 +18,7 @@ if (PHP_RAR != "no") {
 		crc.cpp rijndael.cpp crypt.cpp \
 		rawread.cpp \
 		rs.cpp smallfn.cpp \
-		isnt.cpp rar.cpp consio.cpp \
+		isnt.cpp consio.cpp \
 		scantree.cpp archive.cpp strfn.cpp \
 		strlist.cpp \
 		getbits.cpp hash.cpp \
@@ -31,7 +31,8 @@ if (PHP_RAR != "no") {
 		arcread.cpp filefn.cpp \
 		global.cpp list.cpp \
 		encname.cpp file.cpp \
-		secpassword.cpp options.cpp", "rar", "unrar_obj");
+		secpassword.cpp options.cpp \
+		largepage.cpp motw.cpp", "rar", "unrar_obj");
 
 	AC_DEFINE("HAVE_RAR", 1, "Rar support");
 }

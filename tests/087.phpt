@@ -1,7 +1,5 @@
 --TEST--
 RarArchive read_property gives a fatal error on a write context
---SKIPIF--
-<?php if(!extension_loaded("rar")) print "skip"; ?>
 --FILE--
 <?php
 if (PHP_VERSION_ID>=80500){
@@ -21,4 +19,4 @@ unset($a[0]["jj"]);
 echo "\n";
 echo "Done.\n";
 --EXPECTF--
-Fatal error: main(): A RarArchive object is not modifiable in %s on line %d
+Fatal error: main(): A RarArchive object is not modifiable in %s on line %d%A

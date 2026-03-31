@@ -1,7 +1,5 @@
 --TEST--
 RarArchive unset_property gives a fatal error
---SKIPIF--
-<?php if(!extension_loaded("rar")) print "skip"; ?>
 --FILE--
 <?php
 if (PHP_VERSION_ID>=80500){
@@ -16,4 +14,4 @@ unset($a[0]);
 echo "\n";
 echo "Done.\n";
 --EXPECTF--
-Fatal error: main(): A RarArchive object is not writable in %s on line %d
+Fatal error: main(): A RarArchive object is not writable in %s on line %d%A

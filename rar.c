@@ -28,14 +28,12 @@
 /* $Id$ */
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+# include "config.h"
 #endif
 
-#ifdef __cplusplus
-extern "C" {
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE
 #endif
-
-#define _GNU_SOURCE
 #include <string.h>
 
 #ifdef PHP_WIN32
@@ -50,7 +48,7 @@ extern "C" {
 #include <ext/standard/info.h>
 #include <ext/spl/spl_exceptions.h>
 
-#if HAVE_RAR
+#include "unrar/rardefs.hpp"
 
 #include "php_rar.h"
 
@@ -161,12 +159,8 @@ void _rar_destroy_userdata(rar_cb_user_data *udata) /* {{{ */
 	}
 
 	if (udata->callable != NULL) {
-#if PHP_MAJOR_VERSION < 7
-		zval_ptr_dtor(&udata->callable);
-#else
 		zval_ptr_dtor(udata->callable);
 		efree(udata->callable);
-#endif
 	}
 
 	udata->password = NULL;
@@ -240,13 +234,16 @@ int _rar_find_file_w(struct RAROpenArchiveDataEx *open_data, /* IN */
 
 	while ((result = RARReadHeaderEx(*arc_handle, used_header_data)) == 0) {
 #if WCHAR_MAX > 0xffff
-			_rar_fix_wide(used_header_data->FileNameW, NM);
+		_rar_fix_wide(used_header_data->FileNameW,
+					  ARR_SIZE(used_header_data->FileNameW));
 #endif
 
-		if (wcsncmp(used_header_data->FileNameW, file_name, NM) == 0) {
+		if (wcsncmp(used_header_data->FileNameW, file_name,
+					ARR_SIZE(used_header_data->FileNameW)) == 0) {
 			*found = TRUE;
 			goto cleanup;
-		} else {
+		}
+		else {
 			process_result = RARProcessFile(*arc_handle, RAR_SKIP, NULL, NULL);
 		}
 		if (process_result != 0) {
@@ -383,6 +380,7 @@ int CALLBACK _rar_unrar_callback(UINT msg, LPARAM UserData, LPARAM P1, LPARAM P2
 			return ret;
 		}
 	}
+	// TODO: maybe support UCM_NEEDPASSWORDW and UCM_CHANGEVOLUMEW
 
 	return 0;
 }
@@ -425,7 +423,7 @@ PHP_FUNCTION(rar_wrapper_cache_stats) /* {{{ */
 static void _rar_fix_wide(wchar_t *str, size_t max_size) /* {{{ */
 {
 	wchar_t *write,
-		    *read,
+			*read,
 			*max_fin;
 	max_fin = str + max_size;
 	for (write = str, read = str; *read != L'\0' && read != max_fin; read++) {
@@ -442,61 +440,37 @@ static void _rar_fix_wide(wchar_t *str, size_t max_size) /* {{{ */
  * because, in case we're using exceptions, we want to let an exception with
  * error code ERAR_EOPEN to be thrown.
  */
-static int _rar_unrar_volume_user_callback(char* dst_buffer,
+static int _rar_unrar_volume_user_callback(char* dst_buffer, // MAXPATHSIZE
 										   zend_fcall_info *fci,
 										   zend_fcall_info_cache *cache
 										   TSRMLS_DC) /* {{{ */
 {
-#if PHP_MAJOR_VERSION < 7
-	zval *failed_vol,
-		 *retval_ptr = NULL,
-		 **params;
-#else
 	zval failed_vol,
 		 retval,
 		 *params,
 		 *const retval_ptr = &retval;
-#endif
 	int  ret = -1;
 
-#if PHP_MAJOR_VERSION < 7
-	MAKE_STD_ZVAL(failed_vol);
-	RAR_ZVAL_STRING(failed_vol, dst_buffer, 1);
-	params = &failed_vol;
-	fci->retval_ptr_ptr = &retval_ptr;
-	fci->params = &params;
-#else
 	ZVAL_STRING(&failed_vol, dst_buffer);
 	ZVAL_NULL(&retval);
 	params = &failed_vol;
 	fci->retval = &retval;
 	fci->params = params;
-#endif
 	fci->param_count = 1;
 
-#if PHP_MAJOR_VERSION < 7
-	if (zend_call_function(fci, cache TSRMLS_CC) != SUCCESS ||
-			fci->retval_ptr_ptr == NULL ||
-			*fci->retval_ptr_ptr == NULL) {
-#else
 	if (zend_call_function(fci, cache TSRMLS_CC) != SUCCESS || EG(exception)) {
-#endif
 		php_error_docref(NULL TSRMLS_CC, E_WARNING,
 			"Failure to call volume find callback");
 		goto cleanup;
 	}
 
-#if PHP_MAJOR_VERSION < 7
-	assert(*fci->retval_ptr_ptr == retval_ptr);
-#else
 	assert(fci->retval == &retval);
-#endif
 	if (Z_TYPE_P(retval_ptr) == IS_NULL) {
 		/* let return -1 */
 	}
 	else if (Z_TYPE_P(retval_ptr) == IS_STRING) {
 		char *filename = Z_STRVAL_P(retval_ptr);
-		char resolved_path[MAXPATHLEN];
+		char resolved_path[MAXPATHSIZE];
 		size_t resolved_len;
 
 		if (OPENBASEDIR_CHECKPATH(filename)) {
@@ -508,17 +482,15 @@ static int _rar_unrar_volume_user_callback(char* dst_buffer,
 			goto cleanup;
 		}
 
-		resolved_len = _rar_strnlen(resolved_path, MAXPATHLEN);
-		/* dst_buffer size is NM; first condition won't happen short of a bug
-		 * in expand_filepath */
-		if (resolved_len == MAXPATHLEN || resolved_len > NM - 1) {
+		resolved_len = _rar_strnlen(resolved_path, MAXPATHSIZE);
+		if (resolved_len > MAXPATHSIZE - 1) {
 			php_error_docref(NULL TSRMLS_CC, E_WARNING,
 				"Resolved path is too big for the unRAR library");
 			goto cleanup;
 		}
 
-		strncpy(dst_buffer, resolved_path, NM);
-		dst_buffer[NM - 1] = '\0';
+		strncpy(dst_buffer, resolved_path, MAXPATHSIZE);
+		dst_buffer[MAXPATHSIZE - 1] = '\0';
 		ret = 1; /* try this new filename */
 	}
 	else {
@@ -529,15 +501,8 @@ static int _rar_unrar_volume_user_callback(char* dst_buffer,
 	}
 
 cleanup:
-#if PHP_MAJOR_VERSION < 7
-	zval_ptr_dtor(&failed_vol);
-	if (retval_ptr != NULL) {
-		zval_ptr_dtor(&retval_ptr);
-	}
-#else
 	zval_ptr_dtor(&failed_vol);
 	zval_ptr_dtor(&retval);
-#endif
 	return ret;
 }
 /* }}} */
@@ -553,17 +518,6 @@ static int _rar_make_userdata_fcall(zval *callable,
 
 	*cache = empty_fcall_info_cache;
 
-#if PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION == 2
-	if (zend_fcall_info_init(callable, fci, cache TSRMLS_CC) != SUCCESS) {
-		php_error_docref(NULL TSRMLS_CC, E_WARNING,
-			"The RAR file was not opened in rar_open/RarArchive::open with a "
-			"valid callback.", error);
-		return FAILURE;
-	}
-	else {
-		return SUCCESS;
-	}
-#else
 	if (zend_fcall_info_init(callable, IS_CALLABLE_STRICT, fci, cache, NULL,
 			&error TSRMLS_CC) == SUCCESS) {
 		if (error) {
@@ -583,7 +537,6 @@ static int _rar_make_userdata_fcall(zval *callable,
 		}
 		return FAILURE;
 	}
-#endif
 
 }
 /* }}} */
@@ -634,6 +587,7 @@ ZEND_END_ARG_INFO()
 /* {{{ rar_functions[]
  *
  */
+/* clang-format off */
 static zend_function_entry rar_functions[] = {
 	PHP_FE(rar_open,				arginfo_rar_open)
 	PHP_FE(rar_list,				arginfo_rar_void_archmeth)
@@ -646,16 +600,13 @@ static zend_function_entry rar_functions[] = {
 	PHP_FE(rar_wrapper_cache_stats,	arginfo_rar_wrapper_cache_stats)
 	{NULL, NULL, NULL}
 };
+/* clang-format on */
 /* }}} */
 
 /* {{{ Globals' related activities */
 ZEND_DECLARE_MODULE_GLOBALS(rar);
 
-#if PHP_MAJOR_VERSION < 7
-static int _rar_array_apply_remove_first(void *pDest TSRMLS_DC)
-#else
 static int _rar_array_apply_remove_first(zval *pDest TSRMLS_DC)
-#endif
 {
 	return (ZEND_HASH_APPLY_STOP | ZEND_HASH_APPLY_REMOVE);
 }
@@ -673,13 +624,7 @@ static void _rar_contents_cache_put(const char *key,
 		assert(zend_hash_num_elements(cc->data) == cur_size - 1);
 	}
 	rar_zval_add_ref(&zv);
-#if PHP_MAJOR_VERSION < 7
-	assert(Z_REFCOUNT_P(zv) > 1);
-	SEPARATE_ZVAL(&zv); /* ensure we store a heap allocated copy */
-	zend_hash_update(cc->data, key, key_len, &zv, sizeof(zv), NULL);
-#else
 	zend_hash_str_update(cc->data, key, key_len, zv);
-#endif
 }
 
 static zval *_rar_contents_cache_get(const char *key,
@@ -688,15 +633,7 @@ static zval *_rar_contents_cache_get(const char *key,
 {
 	rar_contents_cache *cc = &RAR_G(contents_cache);
 	zval *element = NULL;
-#if PHP_MAJOR_VERSION < 7
-	zval **element_p = NULL;
-	zend_hash_find(cc->data, key, key_len, (void **) &element_p);
-	if (element_p) {
-		element = *element_p;
-	}
-#else
 	element = zend_hash_str_find(cc->data, key, key_len);
-#endif
 
 	if (element != NULL) {
 		cc->hits++;
@@ -755,16 +692,14 @@ ZEND_MODULE_STARTUP_D(rar)
 
 	php_register_url_stream_wrapper("rar", &php_stream_rar_wrapper TSRMLS_CC);
 
+	/* clang-format off */
 	REGISTER_LONG_CONSTANT("RAR_HOST_MSDOS",	HOST_MSDOS,	CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("RAR_HOST_OS2",		HOST_OS2,	CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("RAR_HOST_WIN32",	HOST_WIN32,	CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("RAR_HOST_UNIX",		HOST_UNIX,	CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("RAR_HOST_MACOS",	HOST_MACOS,	CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("RAR_HOST_BEOS",		HOST_BEOS,	CONST_CS | CONST_PERSISTENT);
-	/* PHP < 5.3 doesn't have the PHP_MAXPATHLEN constant */
-#if PHP_MAJOR_VERSION == 5 && PHP_MINOR_VERSION < 3
-	REGISTER_LONG_CONSTANT("RAR_MAXPATHLEN",	MAXPATHLEN,	CONST_CS | CONST_PERSISTENT);
-#endif
+	/* clang-format on */
 	return SUCCESS;
 }
 /* }}} */
@@ -828,12 +763,6 @@ zend_module_entry rar_module_entry = {
 	STANDARD_MODULE_PROPERTIES_EX,
 };
 /* }}} */
-
-#endif /* HAVE_RAR */
-
-#ifdef __cplusplus
-}
-#endif
 
 /*
  * Local variables:

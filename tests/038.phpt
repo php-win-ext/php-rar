@@ -1,7 +1,5 @@
 --TEST--
 RarArchive get iterator on closed file
---SKIPIF--
-<?php if(!extension_loaded("rar")) print "skip"; ?>
 --FILE--
 <?php
 if (PHP_VERSION_ID>=80500){
@@ -15,4 +13,4 @@ foreach ($rarF as $k => $rarE) {
 }
 echo "Done.\n";
 --EXPECTF--
-Fatal error: main(): The archive is already closed, cannot give an iterator in %s on line %d
+Fatal error: main(): The archive is already closed, cannot give an iterator in %s on line %d%A
