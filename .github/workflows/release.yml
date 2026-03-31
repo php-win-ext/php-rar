@@ -9,43 +9,12 @@ permissions:
   contents: read
 
 jobs:
-  check-version:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check version consistency
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          HEADER_VERSION=$(grep -oP '(?<=#define PHP_RAR_VERSION ")[^"]+' php_rar.h)
-          PACKAGE_VERSION=$(python3 -c "
-          import xml.etree.ElementTree as ET
-          t = ET.parse('package.xml')
-          ns = {'p': 'http://pear.php.net/dtd/package-2.0'}
-          print(t.find('p:version/p:release', ns).text)
-          ")
-
-          echo "Tag version:     $TAG_VERSION"
-          echo "Header version:  $HEADER_VERSION"
-          echo "Package version: $PACKAGE_VERSION"
-
-          if [ "$TAG_VERSION" != "$HEADER_VERSION" ]; then
-            echo "ERROR: Tag version ($TAG_VERSION) does not match PHP_RAR_VERSION in php_rar.h ($HEADER_VERSION)"
-            exit 1
-          fi
-          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "ERROR: Tag version ($TAG_VERSION) does not match version in package.xml ($PACKAGE_VERSION)"
-            exit 1
-          fi
-          echo "All versions match: $TAG_VERSION"
-
   create-draft-release:
-    needs: [check-version]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-tags: 'true'
           ref: ${{ github.ref }}
@@ -53,75 +22,7 @@ jobs:
       - name: Create draft release from tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --draft --notes-from-tag
-
-  linux-extension-matrix:
-    needs: [create-draft-release]
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: set-matrix
-        run: |
-          python3 <<'EOF'
-          import yaml, json, os
-          with open('.github/docker-image-shas.yml') as f:
-              data = yaml.safe_load(f)
-          image = 'ghcr.io/cataphract/php-minimal'
-          includes = []
-          for tag, sha in data[image].items():
-              ver, variant = tag.split('-', 1)
-              if variant not in ('release', 'release-zts'):
-                  continue
-              if float(ver) < 8.1:
-                  continue
-              for arch, runner in [('x86_64', 'ubuntu-latest'), ('aarch64', 'ubuntu-24.04-arm')]:
-                  includes.append({'php': ver, 'variant': variant, 'image_sha': sha,
-                                   'arch': arch, 'runner': runner})
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write('matrix=' + json.dumps({'include': includes}) + '\n')
-          EOF
-
-  linux-build:
-    name: Linux PHP ${{ matrix.php }} (${{ matrix.variant }}, ${{ matrix.arch }})
-    needs: [linux-extension-matrix]
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.linux-extension-matrix.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install patchelf
-        run: sudo apt-get install -y patchelf
-
-      - name: Build rar.so in musl container
-        run: |
-          docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            -v "$GITHUB_WORKSPACE:/workspace" \
-            -w /workspace \
-            "ghcr.io/cataphract/php-minimal@${{ matrix.image_sha }}" \
-            sh -c 'phpize && ./configure --with-php-config=$(which php-config) && make -j$(nproc)'
-
-      - name: Remove musl DT_NEEDED from rar.so
-        run: patchelf --remove-needed "libc.musl-$(uname -m).so.1" modules/rar.so
-
-      - name: Package and upload to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          ARCH="${{ matrix.arch }}"
-          [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-          ZTS_SUFFIX=""
-          [[ "${{ matrix.variant }}" == "release-zts" ]] && ZTS_SUFFIX="-zts"
-          ARTIFACT="php_rar-${VERSION}_php${{ matrix.php }}-${ARCH}-linux${ZTS_SUFFIX}.zip"
-          zip -j "$ARTIFACT" modules/rar.so
-          gh release upload "${{ github.ref_name }}" "$ARTIFACT" --clobber
+        run: gh release create "${{ github.ref_name }}" --draft --generate-notes --verify-tag
 
   windows-extension-matrix:
     needs: [create-draft-release]
@@ -129,7 +30,7 @@ jobs:
     outputs:
       matrix: ${{ steps.extension-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Get the extension matrix
         id: extension-matrix
@@ -144,8 +45,16 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.windows-extension-matrix.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@v6
+      - name: Set version in source code
+        shell: powershell
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          Write-Host "Update version to: $version"
+          $filePath = "php_rar.h"
+          (Get-Content $filePath) -replace '(PHP_RAR_VERSION\s+)"[^"]+"', ('$1' + "`"$version`"") | Set-Content $filePath
+          Write-Host "File $filePath updated."
       - name: Build the extension for Windows
         uses: php/php-windows-builder/extension@v1
         with:
@@ -161,31 +70,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Generate build provenance attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4
+        with:
+          subject-path: 'artifacts/php*'
+
       - name: Upload artifacts to the release
         uses: php/php-windows-builder/release@v1
         with:
           release: ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: 'true'
-
-  pecl-package:
-    needs: [create-draft-release]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          tools: pecl
-
-      - name: Build PECL package
-        run: pecl package
-
-      - name: Upload PECL package to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.ref_name }}" rar-*.tgz
