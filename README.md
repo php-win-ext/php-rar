@@ -42,3 +42,10 @@ pie install php-win-ext/rar
 ```
 
 PIE automatically adds the extension to your `php.ini`.
+
+To install the extension in CI/CD with `ext-rar` project requirement:
+
+```bash
+pie install --select rar=php-win-ext/rar
+```
+
