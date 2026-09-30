@@ -72,3 +72,9 @@ typedef size_t zpp_s_size_t;
 # define RAR_WRAPPER_LOG_ERROR(wrapper, context, options, ...) \
 	php_stream_wrapper_log_error(wrapper, options TSRMLS_CC, __VA_ARGS__)
 #endif
+
+/* PHP 8.6 removed OPENBASEDIR_CHECKPATH() */
+#if PHP_VERSION_ID >= 80600 && !defined(OPENBASEDIR_CHECKPATH)
+# include <fopen_wrappers.h>
+# define OPENBASEDIR_CHECKPATH(filename) php_check_open_basedir(filename)
+#endif
