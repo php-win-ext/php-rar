@@ -1030,9 +1030,14 @@ cleanup:
 /* {{{ _rar_stream_tidy_wrapper_error_log */
 static void _rar_stream_tidy_wrapper_error_log(php_stream_wrapper *wrapper TSRMLS_DC)
 {
+#if PHP_VERSION_ID >= 80600
+	/* FG(wrapper_errors) was replaced by the stream error subsystem */
+	php_stream_tidy_wrapper_error_log(wrapper);
+#else
 	if (wrapper && FG(wrapper_errors)) {
 		zend_hash_str_del(FG(wrapper_errors), (const char*)&wrapper, sizeof wrapper);
 	}
+#endif
 }
 /* }}} */
 
