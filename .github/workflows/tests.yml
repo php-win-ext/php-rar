@@ -185,12 +185,12 @@ jobs:
 
       - name: Run tests
         env:
-          TEST_PHP_EXECUTABLE: php
           TEST_PHP_JUNIT: report.xml
           REPORT_EXIT_STATUS: 1
           NO_INTERACTION: 1
         run: |
-          php run-tests-rar.php \
+          TEST_PHP_EXECUTABLE=$(which php8.6) \
+          php8.6 run-tests-rar.php \
             -n -d extension_dir=modules/ -d extension=rar.so \
             --set-timeout 300 --show-diff \
             tests/
