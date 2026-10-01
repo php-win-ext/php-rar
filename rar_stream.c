@@ -423,6 +423,14 @@ static ssize_t php_rar_dir_ops_read(php_stream *stream, char *buf, size_t count 
 	_rar_wide_to_utf(&self->state->header->FileNameW[offset],
 		entry.d_name, sizeof entry.d_name);
 
+#if PHP_VERSION_ID >= 80300
+	/* PHP 8.3 added d_type to php_stream_dirent; RecursiveDirectoryIterator
+	 * trusts it without stat()'ing when it's DT_DIR/DT_REG, so it must be
+	 * set correctly (it's otherwise left uninitialized) */
+	entry.d_type = (self->state->header->Flags & RHDF_DIRECTORY) ?
+		DT_DIR : DT_REG;
+#endif
+
 	if (!self->no_encode) { /* urlencode entry */
 		zend_string *encoded_name =
 				php_url_encode(entry.d_name, strlen(entry.d_name));
