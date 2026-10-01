@@ -30,6 +30,6 @@ opened
 
 Testing 'r+'
 
-Warning: fopen(%s): %cailed to open stream: Only the "r" and "rb" open modes are permitted, given r+ in %s on line %d
+Warning: fopen(%r.*%r): %cailed to open stream: Only the "r" and "rb" open modes are permitted, given r+ in %s on line %d
 
 Done.

@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check PHP_RAR_VERSION ends in -dev
         run: |
@@ -25,7 +25,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: set-matrix
         run: |
           python3 <<'EOF'
@@ -35,7 +35,7 @@ jobs:
           image = 'ghcr.io/cataphract/php-minimal'
           includes = []
           for tag, sha in data[image].items():
-              # tag: "7.0-debug" or "7.0-release-zts"; skip glibc-only entries
+              # tag: "8.0-debug" or "8.0-release-zts"; skip glibc-only entries
               ver, variant = tag.split('-', 1)
               if variant not in ('debug', 'release-zts'):
                   continue
@@ -57,7 +57,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build and test
         run: bash .github/scripts/build-and-test.sh
@@ -82,7 +82,7 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Read build image SHA
         id: image-sha
@@ -136,7 +136,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build and test
         uses: php/php-windows-builder/extension@v1
@@ -153,4 +153,80 @@ jobs:
         if: always()
         with:
           name: test-results-windows-php8.1-ts
+          path: '*.xml'
+
+  php86-linux:
+    name: PHP 8.6 RC (${{ matrix.ts }}, debug)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        ts: [nts, zts]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP 8.6
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.6'
+          tools: none
+        env:
+          phpts: ${{ matrix.ts }}
+          debug: true
+
+      - name: Build extension
+        run: |
+          php -v
+          phpize
+          ./configure --with-php-config="$(which php-config)"
+          make -j"$(nproc)"
+
+      - name: Run tests
+        env:
+          TEST_PHP_JUNIT: report.xml
+          REPORT_EXIT_STATUS: 1
+          NO_INTERACTION: 1
+        run: |
+          TEST_PHP_EXECUTABLE=$(which php8.6) \
+          php8.6 run-tests-rar.php \
+            -n -d extension_dir=modules/ -d extension=rar.so \
+            --set-timeout 300 --show-diff \
+            tests/
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results-php8.6-${{ matrix.ts }}-debug
+          path: report.xml
+
+  php86-windows:
+    name: Windows PHP 8.6 RC (${{ matrix.ts }})
+    runs-on: windows-2025-vs2026
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        ts: [nts, ts]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build and test
+        uses: php/php-windows-builder/extension@v1
+        with:
+          php-version: '8.6'
+          arch: x64
+          ts: ${{ matrix.ts }}
+          args: --enable-rar=shared
+          test-runner: ${{ github.workspace }}/run-tests-rar.php
+          test-workers: 1
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: test-results-windows-php8.6-${{ matrix.ts }}
           path: '*.xml'

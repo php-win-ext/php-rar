@@ -52,3 +52,29 @@ typedef size_t zpp_s_size_t;
 #define INIT_ZVAL(zv) ZVAL_UNDEF(&zv)
 
 #define ZEND_ACC_FINAL_CLASS ZEND_ACC_FINAL
+
+/* PHP 8.6 removed XtOffsetOf() and zval_dtor() */
+#if PHP_VERSION_ID >= 80600
+# define RAR_OFFSETOF(type, member) offsetof(type, member)
+# define rar_zval_dtor(zv) zval_ptr_dtor_nogc(zv)
+#else
+# define RAR_OFFSETOF(type, member) XtOffsetOf(type, member)
+# define rar_zval_dtor(zv) zval_dtor(zv)
+#endif
+
+/* PHP 8.6 changed the php_stream_wrapper_log_error() signature to
+ * (wrapper, context, options, severity, terminating, code, fmt, ...) */
+#if PHP_VERSION_ID >= 80600
+# define RAR_WRAPPER_LOG_ERROR(wrapper, context, options, ...) \
+	php_stream_wrapper_log_error(wrapper, context, options, E_WARNING, true, \
+		PHP_STREAM_EC(Generic), __VA_ARGS__)
+#else
+# define RAR_WRAPPER_LOG_ERROR(wrapper, context, options, ...) \
+	php_stream_wrapper_log_error(wrapper, options TSRMLS_CC, __VA_ARGS__)
+#endif
+
+/* PHP 8.6 removed OPENBASEDIR_CHECKPATH() */
+#if PHP_VERSION_ID >= 80600 && !defined(OPENBASEDIR_CHECKPATH)
+# include <fopen_wrappers.h>
+# define OPENBASEDIR_CHECKPATH(filename) php_check_open_basedir(filename)
+#endif

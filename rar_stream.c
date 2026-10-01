@@ -423,6 +423,14 @@ static ssize_t php_rar_dir_ops_read(php_stream *stream, char *buf, size_t count 
 	_rar_wide_to_utf(&self->state->header->FileNameW[offset],
 		entry.d_name, sizeof entry.d_name);
 
+#if PHP_VERSION_ID >= 80300
+	/* PHP 8.3 added d_type to php_stream_dirent; RecursiveDirectoryIterator
+	 * trusts it without stat()'ing when it's DT_DIR/DT_REG, so it must be
+	 * set correctly (it's otherwise left uninitialized) */
+	entry.d_type = (self->state->header->Flags & RHDF_DIRECTORY) ?
+		DT_DIR : DT_REG;
+#endif
+
 	if (!self->no_encode) { /* urlencode entry */
 		zend_string *encoded_name =
 				php_url_encode(entry.d_name, strlen(entry.d_name));
@@ -607,7 +615,7 @@ static void php_rar_process_context(php_stream_context *context,
 	if ((ctx_opt = php_stream_context_get_option(
 			 context, "rar", "open_password"))) {
 		if (Z_TYPE_P(ctx_opt) != IS_STRING)
-			php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+			RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 				"RAR open password was provided, but not a string.");
 		else
 			*open_password = Z_STRVAL_P(ctx_opt);
@@ -616,7 +624,7 @@ static void php_rar_process_context(php_stream_context *context,
 	if (file_password != NULL && (ctx_opt = php_stream_context_get_option(
 			context, "rar", "file_password"))) {
 		if (Z_TYPE_P(ctx_opt) != IS_STRING)
-			php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+			RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 				"RAR file password was provided, but not a string.");
 		else
 			*file_password = Z_STRVAL_P(ctx_opt);
@@ -628,7 +636,7 @@ static void php_rar_process_context(php_stream_context *context,
 			*volume_cb = ctx_opt;
 		}
 		else
-			php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+			RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 				"RAR volume find callback was provided, but invalid.");
 	}
 }
@@ -660,14 +668,14 @@ static int _rar_get_archive_and_fragment(php_stream_wrapper *wrapper,
 	tmp_fragment = strchr(filename, '#');
 	if (!allow_no_frag && (tmp_fragment == NULL || strlen(tmp_fragment) == 1 ||
 			tmp_fragment == filename)) {
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, NULL, options,
 			"The url must contain a path and a non-empty fragment; it must be "
 			"in the form \"rar://<urlencoded path to RAR archive>[*]#"
 			"<urlencoded entry name>\"");
 		goto cleanup;
 	}
 	if (allow_no_frag && (tmp_fragment == filename || filename[0] == '\0')) {
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, NULL, options,
 			"The url must contain a path and an optional fragment; it must be "
 			"in the form \"rar://<urlencoded path to RAR archive>[*][#["
 			"<urlencoded entry name>]]\"");
@@ -710,7 +718,7 @@ static int _rar_get_archive_and_fragment(php_stream_wrapper *wrapper,
 		if (*archive == NULL) {
 			if ((*archive = expand_filepath(tmp_archive, NULL TSRMLS_CC))
 					== NULL) {
-				php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+				RAR_WRAPPER_LOG_ERROR(wrapper, NULL, options,
 					"Could not expand the path %s", tmp_archive);
 				goto cleanup;
 			}
@@ -794,14 +802,14 @@ static php_stream *php_stream_rar_opener(php_stream_wrapper *wrapper,
 	/* {{{ preliminaries */
 	if (options & STREAM_OPEN_PERSISTENT) {
 		/* TODO: add support for opening RAR files in a persisten fashion */
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 			"No support for opening RAR files persistently yet");
 		return NULL;
 	}
 
 	/* mode must be "r" or "rb", which, for BC reasons, are treated identically */
 	if (mode[0] != 'r' || (mode[1] != '\0' && mode[1] != 'b') || strlen(mode) > 2) {
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 			"Only the \"r\" and \"rb\" open modes are permitted, given %s", mode);
 		return NULL;
 	}
@@ -838,14 +846,14 @@ static php_stream *php_stream_rar_opener(php_stream_wrapper *wrapper,
 		&self->header_data);
 
 	if ((rar_error = _rar_error_to_string(rar_result)) != NULL) {
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 			"Error opening RAR archive %s: %s", tmp_open_path, rar_error);
 		goto cleanup;
 	}
 
 	if (!file_found)  {
 		char *mb_fragment = _rar_wide_to_utf_with_alloc(fragment, -1);
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 			"Can't file %s in RAR archive %s", mb_fragment, tmp_open_path);
 		efree(mb_fragment);
 		goto cleanup;
@@ -875,7 +883,7 @@ static php_stream *php_stream_rar_opener(php_stream_wrapper *wrapper,
 
 		if ((rar_error = _rar_error_to_string(rar_result)) != NULL) {
 			char *mb_entry = _rar_wide_to_utf_with_alloc(fragment, -1);
-			php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+			RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 					"Error opening file %s inside RAR archive %s: %s",
 					mb_entry, tmp_open_path, rar_error);
 			efree(mb_entry);
@@ -968,11 +976,11 @@ static int _rar_get_cachable_rararch(php_stream_wrapper *wrapper,
 				rar_obj, &err_code TSRMLS_CC) == FAILURE) {
 			const char *err_str = _rar_error_to_string(err_code);
 			if (err_str == NULL)
-				php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+				RAR_WRAPPER_LOG_ERROR(wrapper, NULL, options,
 					"%s", "Archive opened failed (returned NULL handle), but "
 					"did not return an error. Should not happen.");
 			else {
-				php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+				RAR_WRAPPER_LOG_ERROR(wrapper, NULL, options,
 					"Failed to open %s: %s", arch_path, err_str);
 			}
 
@@ -984,7 +992,7 @@ static int _rar_get_cachable_rararch(php_stream_wrapper *wrapper,
 
 			if (_rar_get_file_resource_zv_ex(rar_obj, rar, 1 TSRMLS_CC)
 					== FAILURE) {
-				php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+				RAR_WRAPPER_LOG_ERROR(wrapper, NULL, options,
 					"Bug: could not retrieve RarArchive object from zval");
 				goto cleanup;
 			}
@@ -993,7 +1001,7 @@ static int _rar_get_cachable_rararch(php_stream_wrapper *wrapper,
 
 			/* we don't cache incomplete archives */
 			if ((err_str = _rar_error_to_string(res)) != NULL) {
-				php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+				RAR_WRAPPER_LOG_ERROR(wrapper, NULL, options,
 					"Error reading entries of archive %s: %s", arch_path,
 					err_str);
 				goto cleanup;
@@ -1007,7 +1015,7 @@ static int _rar_get_cachable_rararch(php_stream_wrapper *wrapper,
 		/* cache get already put the value in rar_obj and incremented the
 		 * refcount of the object */
 		if (_rar_get_file_resource_zv_ex(rar_obj, rar, 1 TSRMLS_CC) == FAILURE) {
-			php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+			RAR_WRAPPER_LOG_ERROR(wrapper, NULL, options,
 				"Bug: could not retrieve RarArchive object from zval");
 			goto cleanup;
 		}
@@ -1030,9 +1038,14 @@ cleanup:
 /* {{{ _rar_stream_tidy_wrapper_error_log */
 static void _rar_stream_tidy_wrapper_error_log(php_stream_wrapper *wrapper TSRMLS_DC)
 {
+#if PHP_VERSION_ID >= 80600
+	/* FG(wrapper_errors) was replaced by the stream error subsystem */
+	php_stream_tidy_wrapper_error_log(wrapper);
+#else
 	if (wrapper && FG(wrapper_errors)) {
 		zend_hash_str_del(FG(wrapper_errors), (const char*)&wrapper, sizeof wrapper);
 	}
+#endif
 }
 /* }}} */
 
@@ -1089,7 +1102,7 @@ static int php_stream_rar_stater(php_stream_wrapper *wrapper,
 	if (!state->found) {
 		char *mb_entry = _rar_wide_to_utf_with_alloc(fragment,
 			(int) fragment_len);
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 			"Found no entry %s in archive %s", mb_entry, open_path);
 		efree(mb_entry);
 		goto cleanup;
@@ -1151,14 +1164,14 @@ static php_stream *php_stream_rar_dir_opener(php_stream_wrapper *wrapper,
 	/* {{{ preliminaries */
 	if (options & STREAM_OPEN_PERSISTENT) {
 		/* TODO: add support for opening RAR files in a persisten fashion */
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 			"No support for opening RAR files persistently yet");
 		return NULL;
 	}
 
 	/* mode must be "r" or "rb", which, for BC reasons, are treated identically */
 	if (mode[0] != 'r' || (mode[1] != '\0' && mode[1] != 'b') || strlen(mode) > 2) {
-		php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+		RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 			"Only the \"r\" and \"rb\" open modes are permitted, given %s", mode);
 		return NULL;
 	}
@@ -1212,7 +1225,7 @@ static php_stream *php_stream_rar_dir_opener(php_stream_wrapper *wrapper,
 				message = "Archive %s has an entry named %s, but it is not a "
 					"directory";
 
-			php_stream_wrapper_log_error(wrapper, options TSRMLS_CC,
+			RAR_WRAPPER_LOG_ERROR(wrapper, context, options,
 				message, tmp_open_path, mb_entry);
 			efree(mb_entry);
 			goto cleanup;
