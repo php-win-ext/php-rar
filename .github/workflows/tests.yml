@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check PHP_RAR_VERSION ends in -dev
         run: |
@@ -25,7 +25,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: set-matrix
         run: |
           python3 <<'EOF'
@@ -35,7 +35,7 @@ jobs:
           image = 'ghcr.io/cataphract/php-minimal'
           includes = []
           for tag, sha in data[image].items():
-              # tag: "7.0-debug" or "7.0-release-zts"; skip glibc-only entries
+              # tag: "8.0-debug" or "8.0-release-zts"; skip glibc-only entries
               ver, variant = tag.split('-', 1)
               if variant not in ('debug', 'release-zts'):
                   continue
@@ -57,7 +57,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build and test
         run: bash .github/scripts/build-and-test.sh
@@ -82,7 +82,7 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Read build image SHA
         id: image-sha
@@ -136,7 +136,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build and test
         uses: php/php-windows-builder/extension@v1

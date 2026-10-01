@@ -41,7 +41,7 @@ unrar branch.
    yet.
 4. Resolve any conflicts that may have arisen, preserving the functionality that
    was added to the unrar library and the associated extension functionality.
-5. Test. Inspect the `Justfile`. Run the tests for 7.0 and the latest supported
+5. Test. Inspect the `Justfile`. Run the tests for 8.0 and the latest supported
    PHP version (debug and release-zts).
 7. Continue with the next minor version on step 3, until we're synced with the
    `unrar` branch.

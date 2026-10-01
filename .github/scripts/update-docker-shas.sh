@@ -10,11 +10,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCK_FILE="$SCRIPT_DIR/../docker-image-shas.yml"
 
 TAGS=(
-    7.0-debug       7.0-release-zts
-    7.1-debug       7.1-release-zts
-    7.2-debug       7.2-release-zts
-    7.3-debug       7.3-release-zts
-    7.4-debug       7.4-release-zts
     8.0-debug       8.0-release-zts
     8.1-debug       8.1-release     8.1-release-zts
     8.2-debug       8.2-release     8.2-release-zts
